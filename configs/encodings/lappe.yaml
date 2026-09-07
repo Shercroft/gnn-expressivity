@@ -1,0 +1,6 @@
+encoding:
+  name: lappe
+
+  num_eigenvectors: 16
+
+  normalization: true

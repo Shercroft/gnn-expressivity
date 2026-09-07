@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Downloaded research datasets
+/data/raw/brec/
+
+# Local experiment outputs
+/results/

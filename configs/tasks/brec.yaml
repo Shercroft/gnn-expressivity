@@ -1,0 +1,27 @@
+task:
+  name: brec
+
+  dataset: BREC
+
+  batch_size: 32
+
+  num_workers: 0
+
+training:
+  epochs: 100
+
+  learning_rate: 0.001
+
+  weight_decay: 0.00001
+
+evaluation:
+  seeds:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+
+  save_embeddings: true
+
+  save_predictions: true

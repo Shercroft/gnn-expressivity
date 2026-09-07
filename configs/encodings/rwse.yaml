@@ -1,0 +1,6 @@
+encoding:
+  name: rwse
+
+  walk_length: 16
+
+  normalization: true
