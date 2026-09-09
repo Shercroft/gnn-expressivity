@@ -1,4 +1,4 @@
-"""Run the seed-42 GIN/BREC RPC development experiment."""
+"""Run one seeded GIN/BREC RPC experiment."""
 
 import argparse
 from pathlib import Path
@@ -14,6 +14,7 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
 
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42).")
 
     parser.add_argument(
         "--results-dir",
@@ -61,7 +62,7 @@ def main() -> None:
     )
 
     # Base run ID produced by the repository logging infrastructure.
-    run_id = build_run_id(config, 42)
+    run_id = build_run_id(config, args.seed)
 
     # Development subsets must not collide with the eventual full 400-pair run.
     if args.max_pairs is not None:
@@ -86,6 +87,7 @@ def main() -> None:
 
     result = evaluate_gin_brec(
         config,
+        seed=args.seed,
         embeddings_path=embeddings_path,
         max_pairs=args.max_pairs,
     )

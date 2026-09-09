@@ -587,16 +587,20 @@ def summarize_results(
 def evaluate_gin_brec(
     config: Mapping[str, Any],
     *,
+    seed: int = 42,
     embeddings_path: Path | None = None,
     progress: Callable[[str], None] = print,
     max_pairs: int | None = None,
 ) -> dict[str, Any]:
-    """Run the seed-42 GIN/BREC experiment.
+    """Run one seeded GIN/BREC experiment.
 
     Parameters
     ----------
     config:
         Merged repository configuration.
+
+    seed:
+        Random seed for initialization and training (default 42).
 
     embeddings_path:
         Optional destination for compressed test and reliability
@@ -614,8 +618,6 @@ def evaluate_gin_brec(
         Partial runs are explicitly marked and do not receive a
         valid full-benchmark primary metric.
     """
-
-    seed = 42
 
     set_seed(seed)
 
@@ -889,8 +891,8 @@ def evaluate_gin_brec(
 
     deviations = [
         (
-            "Seed 42 development run only; "
-            "not a final multi-seed result."
+            "Single project-level seeded run; "
+            "not the official repository's full seed/search procedure."
         ),
         (
             "Training epochs/lr/weight_decay/batch_size "

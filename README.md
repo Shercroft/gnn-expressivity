@@ -83,7 +83,8 @@ with the current GIN config.
 ## GIN on BREC development experiment
 
 Run `uv run python scripts/reproduce_gin_brec.py` after downloading BREC.
-This runs **seed 42 only**, training a fresh GIN for each of the 400 pairs.
+This defaults to **seed 42**, training a fresh GIN for each of the 400 pairs.
+Use `--seed N` to select another seed.
 It uses the existing model/task configs and `encodings/none.yaml`; CPU threads
 default to 1 (`--threads` overrides). Device selection uses the existing helper.
 
@@ -119,3 +120,46 @@ includes optimization; inference includes all test/control forward passes.
 Total evaluation time includes these stages and statistics, but excludes final
 artifact writing. RSS is sampled at completion, not peak process memory.
 Use `--results-dir PATH` for a new output location; existing runs are not overwritten.
+
+## Five-seed reproducibility (B5)
+
+The evaluator API is `evaluate_gin_brec(config, seed=42, max_pairs=None, ...)`.
+The existing RPC statistic, reliability rule and development-subset behavior
+are unchanged. For example:
+
+```sh
+uv run python scripts/reproduce_gin_brec.py --seed 0 --max-pairs 20
+uv run python -u scripts/run_gin_brec_seeds.py
+uv run python scripts/aggregate_gin_brec.py
+```
+
+The sweep runs exactly seeds `[0, 1, 2, 3, 4]`, sequentially, using the single-run
+CLI and existing evaluator. Each seed starts in a separate process with the
+same uv Python environment for resource isolation. `--threads` and
+`--results-dir` are supported. Completed full JSON runs are validated and skipped;
+invalid JSON or orphan embedding files are reported without overwriting. Failures
+do not erase successful seeds, and the runner returns a failure status if any
+seed failed. Interrupted seeds restart from the beginning when rerun; there is
+no per-pair checkpoint/resume mechanism.
+
+Full runs are `results/runs/brec_gin_none_seed0.json` through `seed4.json`, with
+adjacent `_embeddings.npz` files when configured. Development runs retain
+`_firstN` suffixes. Aggregation reads exactly the five canonical full filenames,
+ignoring seed 42, subset files and other models. It requires one record per seed,
+400 evaluated pairs, complete/non-development flags, matching source hash,
+model/encoding/training/task settings, parameter count and numerical protocol.
+Category totals, rates, validity flags and finite resource values are checked.
+
+Outputs are `results/summaries/gin_brec_summary.csv` (long-form statistics)
+and `gin_brec_by_seed.csv` (each seed/category and recorded resource metadata).
+Statistics are mean, **sample** standard deviation (`ddof=1`), minimum and maximum.
+Missing CUDA measurements stay missing; a group of one has no sample deviation.
+Scientific aggregates expose `all_benchmarks_valid`, and per-seed rows retain
+`benchmark_valid`; invalid runs are not silently dropped. Resource statistics
+are grouped by OS/device/accelerator/software/thread metadata, with those fields
+preserved as JSON columns. They should not be compared as identical hardware
+measurements across different groups. Physical CPU chip details are limited by
+the existing profiler's metadata. Source/config/protocol metadata are retained
+for future model comparisons. Existing CSVs are protected; use `--output-dir`
+for a new summary location. This is a project reproducibility sweep, not an
+exact reproduction of every official BREC seed/search procedure.
