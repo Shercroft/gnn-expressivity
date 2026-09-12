@@ -1,6 +1,86 @@
 # gnn-expressivity
 Studying when increased GNN expressivity improves generalization, structural reasoning, and efficiency.
 
+## Background, Replication, and Project Contribution
+
+### Established prior work
+
+This project builds on established results in graph neural network
+expressivity.
+
+Standard message-passing GNNs are limited by the distinguishing power
+of the 1-dimensional Weisfeiler-Leman (1-WL) procedure under the
+standard neighborhood-aggregation framework. GIN was designed to match
+this level of discriminative power under suitable injectivity
+assumptions.
+
+BREC is an existing standardized benchmark for evaluating realized GNN
+expressivity on difficult non-isomorphic graph pairs. These results and
+the benchmark itself are prior work and are not contributions of this
+project.
+
+### Reproduction layer
+
+Before studying stronger structural information, we validate the
+experimental pipeline using a standard GIN baseline on BREC.
+
+The current reproduction layer includes:
+
+- official BREC data ingestion and provenance tracking;
+- Reliable Paired Comparisons-style evaluation;
+- a constant-feature GIN baseline;
+- project-level runs with seeds 0, 1, 2, 3, and 4;
+- category-level and aggregate result logging;
+- resource and configuration metadata; and
+- automated BREC, GIN, reproducibility, and analysis tests.
+
+Across the current five project seeds, the GIN baseline distinguished
+0 of 400 BREC pairs, with zero recorded reliability failures in each
+run.
+
+This is treated as a reproduction and pipeline-validation result, not
+as a new theoretical result. The project five-seed sweep also does not
+claim to reproduce every detail of the official BREC seed/search
+procedure.
+
+See `reports/gin_brec_reproduction.md` for the current reproduction
+report.
+
+### Project research question
+
+The main project contribution is not the discovery of the 1-WL
+limitation, the construction of GIN, or the introduction of BREC.
+
+Instead, we study:
+
+> Under realistic compute and feature budgets, when does increasing a
+> graph model's realized structural expressivity improve
+> generalization, and when does the additional expressivity fail to
+> translate into useful predictive performance?
+
+The experimental study therefore connects four axes:
+
+1. realized structural expressivity;
+2. IID and out-of-distribution generalization;
+3. node features and positional / structural encodings; and
+4. preprocessing, training, inference, and memory cost.
+
+Later experiments extend the constant-feature GIN baseline with
+structural information such as random-walk structural encodings and
+truncated Laplacian positional encodings, followed by stronger model
+families when feasible.
+
+### Explicit non-claims
+
+This project does not claim to:
+
+- discover the 1-WL limitation of standard message-passing GNNs;
+- prove the expressive power of GIN;
+- introduce BREC;
+- discover previously known substructure-counting limitations; or
+- establish that greater BREC expressivity necessarily implies better
+  generalization.
+
 ## BREC ingestion (B1–B2)
 
 [BREC](https://github.com/GraphPKU/BREC) benchmarks graph expressivity using
