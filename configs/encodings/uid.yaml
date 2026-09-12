@@ -1,8 +1,2 @@
 encoding:
   name: uid
-
-  dimension: 16
-
-  distribution: gaussian
-
-  normalization: true

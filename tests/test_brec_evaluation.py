@@ -5,6 +5,7 @@ import torch
 from torch_geometric.data import Data
 
 from gnn_expressivity.models import GIN
+from gnn_expressivity.encodings import build_encoding
 from gnn_expressivity.training.brec_evaluation import (
     embed_batches,
     pair_batches,
@@ -87,6 +88,21 @@ def test_pair_batching_training_and_embedding():
 def test_odd_batch_size_rejected():
     with pytest.raises(ValueError, match="even"):
         pair_batches(ToyDataset(), 0, 3, torch.device("cpu"))
+
+
+@pytest.mark.parametrize("name,width", [("none", 1), ("degree", 2), ("uid", 2), ("random", 9)])
+def test_pair_batches_with_encodings(name, width):
+    encoder = build_encoding({"name": name})
+    _, batches, controls = pair_batches(ToyDataset(), 0, 10, torch.device("cpu"), encoder)
+    for batch in batches + controls:
+        assert batch.x is not None
+        assert batch.x.shape == (batch.num_nodes, width)
+        assert batch.x.is_floating_point()
+        assert torch.isfinite(batch.x).all()
+    if name == "random":
+        # Same-size A/B graphs receive identical index-tied draws.
+        graphs = controls[0].to_data_list()
+        assert torch.equal(graphs[0].x, graphs[1].x)
 
 
 def test_metadata_misalignment_rejected():

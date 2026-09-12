@@ -160,6 +160,28 @@ Run the CPU-only forward smoke test with `uv run python scripts/test_gin_forward
 It batches four small graphs and checks that `encode()` returns shape `[4, 128]`
 with the current GIN config.
 
+## WP2 node encodings
+
+Encodings augment existing floating-point node features, using constant ones
+for featureless graphs through the `none` baseline:
+
+- `none`: baseline features only.
+- `degree`: baseline + raw source-node degree; permutation-equivariant.
+- `uid`: baseline + current node index divided by `n - 1` (zero for one node);
+  intentionally label-sensitive.
+- `random`: baseline + seeded standard-normal vectors (default dimension 8,
+  seed 0), tied to current node indices; intentionally label-sensitive.
+
+Random encoding resets a local CPU generator on every call, so equal node
+counts receive the same matrix without consuming the global PyTorch RNG.
+UID and random encodings are intentionally not graph-relabeling invariant
+when recomputed after relabeling. Effects on expressivity and generalization
+remain experimental questions.
+
+Select configs with the existing `load_yaml` / `merge_configs` utilities and
+pass the merged model, task, and encoding config to `evaluate_gin_brec`.
+The single-run CLI continues to select `none` by default.
+
 ## GIN on BREC development experiment
 
 Run `uv run python scripts/reproduce_gin_brec.py` after downloading BREC.
