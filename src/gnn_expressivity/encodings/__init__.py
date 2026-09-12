@@ -7,6 +7,7 @@ from .base import GraphEncoding
 from .degree import DegreeEncoding
 from .none import NoStructuralEncoding
 from .random_features import RandomNodeEncoding
+from .rwse import RWSEEncoding
 from .uid import UIDEncoding
 
 
@@ -29,6 +30,9 @@ def build_encoding(config: Mapping[str, Any]) -> GraphEncoding:
             seed=encoding_config.get("seed", 0),
         )
 
+    if name == "rwse":
+        return RWSEEncoding(walk_length=encoding_config.get("walk_length", 16))
+
     raise ValueError(f"Unsupported encoding: {name}")
 
 
@@ -37,6 +41,7 @@ __all__ = [
     "DegreeEncoding",
     "NoStructuralEncoding",
     "RandomNodeEncoding",
+    "RWSEEncoding",
     "UIDEncoding",
     "build_encoding",
 ]

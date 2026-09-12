@@ -5,7 +5,7 @@ import torch
 from torch_geometric.data import Data
 
 from gnn_expressivity.models import GIN
-from gnn_expressivity.encodings import build_encoding
+from gnn_expressivity.encodings import RWSEEncoding, build_encoding
 from gnn_expressivity.training.brec_evaluation import (
     embed_batches,
     pair_batches,
@@ -88,6 +88,19 @@ def test_pair_batching_training_and_embedding():
 def test_odd_batch_size_rejected():
     with pytest.raises(ValueError, match="even"):
         pair_batches(ToyDataset(), 0, 3, torch.device("cpu"))
+
+
+def test_pair_batches_with_rwse():
+    _, batches, controls = pair_batches(
+        ToyDataset(), 0, 10, torch.device("cpu"), encoder=RWSEEncoding(4)
+    )
+    for batch in batches + controls:
+        assert batch.x is not None
+        assert batch.x.shape == (batch.num_nodes, 5)
+        assert batch.x.is_floating_point()
+        assert torch.isfinite(batch.x).all()
+        assert torch.equal(batch.x[:, 0], torch.ones(batch.num_nodes))
+        assert torch.count_nonzero(batch.x[:, 1:]) == 0
 
 
 @pytest.mark.parametrize("name,width", [("none", 1), ("degree", 2), ("uid", 2), ("random", 9)])

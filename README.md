@@ -171,6 +171,14 @@ for featureless graphs through the `none` baseline:
   intentionally label-sensitive.
 - `random`: baseline + seeded standard-normal vectors (default dimension 8,
   seed 0), tied to current node indices; intentionally label-sensitive.
+- `rwse`: baseline + node-wise return probabilities `diag(P), ..., diag(P^k)`,
+  where `P = D^-1 A` uses outgoing edge counts and default `k=16` (no step zero).
+  Isolated-node values are zero. This deterministic structural encoding is
+  permutation-equivariant and does not depend on arbitrary node IDs.
+
+RWSE respects directed edges, parallel edges, and existing self-loops without
+adding edges. Dense float64 CPU preprocessing costs approximately `O(k n^3)`
+time and `O(n^2 + nk)` memory; results match the baseline dtype/device.
 
 Random encoding resets a local CPU generator on every call, so equal node
 counts receive the same matrix without consuming the global PyTorch RNG.
