@@ -32,6 +32,10 @@ from gnn_expressivity.data.brec import (
     BRECDataset,
     validate_brec,
 )
+from gnn_expressivity.encodings import (
+    GraphEncoding,
+    build_encoding,
+)
 from gnn_expressivity.models import GIN
 from gnn_expressivity.training.logging import (
     build_run_id,
@@ -190,6 +194,7 @@ def pair_batches(
     pair_id: int,
     batch_size: int,
     device: torch.device,
+    encoder: GraphEncoding | None = None,
 ) -> tuple[
     Any,
     list[Batch],
@@ -199,7 +204,20 @@ def pair_batches(
 
     Every official relabeling is preserved, as is the A/B ordering
     required by the RPC protocol.
+
+    ``encoder`` is optional for backward compatibility. When omitted,
+    the existing ``none`` encoding is used, which supplies constant-one
+    node features to featureless graphs.
     """
+
+    if encoder is None:
+        encoder = build_encoding(
+            {
+                "encoding": {
+                    "name": "none",
+                }
+            }
+        )
 
     if batch_size <= 0 or batch_size % 2:
         raise ValueError(
@@ -245,6 +263,48 @@ def pair_batches(
         for i in range(64)
     ]
 
+    encoded_graphs = [encoder(graph) for graph in graphs]
+    encoded_controls = [encoder(graph) for graph in controls]
+
+    all_encoded = encoded_graphs + encoded_controls
+
+    feature_dims: set[int] = set()
+
+    for graph in all_encoded:
+        if graph.x is None:
+            raise ValueError(
+                f"Encoding '{encoder.name}' produced missing node features"
+            )
+
+        if graph.x.ndim != 2:
+            raise ValueError(
+                f"Encoding '{encoder.name}' must produce 2-D node features"
+            )
+
+        if not graph.x.is_floating_point():
+            raise ValueError(
+                f"Encoding '{encoder.name}' must produce floating-point features"
+            )
+
+        if graph.x.shape[0] != graph.num_nodes:
+            raise ValueError(
+                f"Encoding '{encoder.name}' produced the wrong number of node features"
+            )
+
+        if not torch.isfinite(graph.x).all():
+            raise ValueError(
+                f"Encoding '{encoder.name}' produced non-finite node features"
+            )
+
+        feature_dims.add(int(graph.x.shape[1]))
+
+    if len(feature_dims) != 1:
+        raise ValueError(
+            f"Encoding '{encoder.name}' produced inconsistent feature dimensions"
+        )
+
+    feature_dims.pop()
+
     def batches(
         items: list[Data],
     ) -> list[Batch]:
@@ -261,8 +321,8 @@ def pair_batches(
 
     return (
         representative,
-        batches(graphs),
-        batches(controls),
+        batches(encoded_graphs),
+        batches(encoded_controls),
     )
 
 
@@ -623,11 +683,6 @@ def evaluate_gin_brec(
 
     device = get_device()
 
-    if config["encoding"]["name"] != "none":
-        raise ValueError(
-            "This baseline requires encoding=none"
-        )
-
     if device.type == "cuda":
         reset_cuda_peak_memory(device)
 
@@ -653,6 +708,8 @@ def evaluate_gin_brec(
             )
 
             validate_brec(dataset)
+
+            encoder = build_encoding(config)
 
         preprocessing += timer.elapsed_sec
 
@@ -695,12 +752,20 @@ def evaluate_gin_brec(
                         pair_id,
                         config["task"]["batch_size"],
                         device,
+                        encoder,
                     )
                 )
 
+                if not batches or batches[0].x is None:
+                    raise ValueError(
+                        f"Encoding '{encoder.name}' produced no batched node features"
+                    )
+
+                in_dim = int(batches[0].x.shape[1])
+
                 model = GIN.from_config(
                     config,
-                    in_dim=1,
+                    in_dim=in_dim,
                     out_dim=OUTPUT_DIM,
                 ).to(device)
 
@@ -900,8 +965,8 @@ def evaluate_gin_brec(
         ),
         (
             "Existing final-layer GIN encoder plus "
-            "linear 16-D RPC head; constant-one "
-            "input features."
+            "linear 16-D RPC head; node features are "
+            f"supplied by the configured '{encoder.name}' encoding."
         ),
         (
             "Ordered PyG batches cached per pair; "
@@ -946,7 +1011,7 @@ def evaluate_gin_brec(
         "task": config["task"]["name"],
         "dataset": config["task"]["dataset"],
         "model": "gin",
-        "encoding": "none",
+        "encoding": encoder.name,
         "hidden_dim": (
             config["model"]["hidden_dim"]
         ),
