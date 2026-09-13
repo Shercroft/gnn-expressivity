@@ -1,0 +1,4 @@
+encoding:
+  name: lappe
+  k: 8
+  eigen_tol: 1.0e-8

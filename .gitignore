@@ -262,3 +262,9 @@ reports/tmp/
 # ------------------------------------------------------------
 
 .python-version.local
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# Local scratch directory
+.tmp/

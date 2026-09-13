@@ -1,0 +1,4 @@
+encoding:
+  name: random
+  dim: 8
+  seed: 0

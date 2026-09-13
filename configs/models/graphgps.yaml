@@ -1,0 +1,15 @@
+model:
+  name: graphgps
+
+  hidden_dim: 128
+  num_layers: 4
+
+  dropout: 0.1
+
+  activation: relu
+
+  num_heads: 4
+
+  pooling: sum
+
+  train_eps: true

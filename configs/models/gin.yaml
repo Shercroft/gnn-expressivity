@@ -1,0 +1,13 @@
+model:
+  name: gin
+
+  hidden_dim: 128
+  num_layers: 4
+
+  dropout: 0.1
+
+  activation: relu
+
+  pooling: sum
+
+  train_eps: true
