@@ -190,6 +190,23 @@ Select configs with the existing `load_yaml` / `merge_configs` utilities and
 pass the merged model, task, and encoding config to `evaluate_gin_brec`.
 The single-run CLI continues to select `none` by default.
 
+LapPE (`lappe`, default `k=8`, `eigen_tol=1e-8`) appends the k lowest-frequency
+nontrivial eigenvectors of `L_sym = I - D^{-1/2} A D^{-1/2}`. Isolated-node
+rows/columns are zero. All nullspace vectors are excluded using eigenvalues
+strictly greater than `eigen_tol`; small or disconnected graphs are zero-padded
+to fixed width. Reciprocal duplicate counts accumulate; asymmetric adjacency
+is rejected, and existing self-loops are respected without adding edges.
+
+Each eigenvector's first largest-magnitude entry anchors its sign to be
+nonnegative for fixed-graph reproducibility. Sign ambiguity remains in principle,
+and tied anchors can be label-sensitive. Repeated eigenvalues permit different
+bases: permutation comparisons are up to sign or complete-eigenspace projectors,
+not arbitrary exact column identity. Truncating through a repeated-eigenvalue
+block does not guarantee a canonical subspace. Person A must validate the
+interpretation of degeneracies before paper claims. Dense CPU float64
+eigendecomposition costs roughly `O(n^3)` time and `O(n^2)` matrix storage,
+plus `O(nk)` output storage; appended features match baseline dtype/device.
+
 ## GIN on BREC development experiment
 
 Run `uv run python scripts/reproduce_gin_brec.py` after downloading BREC.

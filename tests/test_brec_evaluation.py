@@ -5,7 +5,7 @@ import torch
 from torch_geometric.data import Data
 
 from gnn_expressivity.models import GIN
-from gnn_expressivity.encodings import RWSEEncoding, build_encoding
+from gnn_expressivity.encodings import LapPEEncoding, RWSEEncoding, build_encoding
 from gnn_expressivity.training.brec_evaluation import (
     embed_batches,
     pair_batches,
@@ -90,9 +90,10 @@ def test_odd_batch_size_rejected():
         pair_batches(ToyDataset(), 0, 3, torch.device("cpu"))
 
 
-def test_pair_batches_with_rwse():
+@pytest.mark.parametrize("encoder", [RWSEEncoding(4), LapPEEncoding(4)])
+def test_pair_batches_with_structural_encodings(encoder):
     _, batches, controls = pair_batches(
-        ToyDataset(), 0, 10, torch.device("cpu"), encoder=RWSEEncoding(4)
+        ToyDataset(), 0, 10, torch.device("cpu"), encoder=encoder
     )
     for batch in batches + controls:
         assert batch.x is not None

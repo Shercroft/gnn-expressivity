@@ -5,6 +5,7 @@ from typing import Any
 
 from .base import GraphEncoding
 from .degree import DegreeEncoding
+from .lappe import LapPEEncoding
 from .none import NoStructuralEncoding
 from .random_features import RandomNodeEncoding
 from .rwse import RWSEEncoding
@@ -33,12 +34,19 @@ def build_encoding(config: Mapping[str, Any]) -> GraphEncoding:
     if name == "rwse":
         return RWSEEncoding(walk_length=encoding_config.get("walk_length", 16))
 
+    if name == "lappe":
+        return LapPEEncoding(
+            k=encoding_config.get("k", 8),
+            eigen_tol=encoding_config.get("eigen_tol", 1e-8),
+        )
+
     raise ValueError(f"Unsupported encoding: {name}")
 
 
 __all__ = [
     "GraphEncoding",
     "DegreeEncoding",
+    "LapPEEncoding",
     "NoStructuralEncoding",
     "RandomNodeEncoding",
     "RWSEEncoding",
