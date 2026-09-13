@@ -1,4 +1,4 @@
-"""GIN/BREC experiment following the official BREC RPC evaluation code.
+"""Graph-model/BREC experiment following the official BREC RPC evaluation code.
 
 Reference:
 GraphPKU/BREC, commit d09e8c349a8bbc0882d2932f7b37b2726f576ce9,
@@ -36,7 +36,7 @@ from gnn_expressivity.encodings import (
     GraphEncoding,
     build_encoding,
 )
-from gnn_expressivity.models import GIN
+from gnn_expressivity.models import build_model
 from gnn_expressivity.training.logging import (
     build_run_id,
     get_git_commit,
@@ -327,11 +327,11 @@ def pair_batches(
 
 
 def train_pair(
-    model: GIN,
+    model: nn.Module,
     batches: Sequence[Batch],
     config: Mapping[str, Any],
 ) -> tuple[float, int]:
-    """Train GIN independently on one BREC graph pair.
+    """Train a model independently on one BREC graph pair.
 
     This follows the BREC-style cosine-margin objective and early
     stopping structure.
@@ -427,7 +427,7 @@ def train_pair(
 
 
 def embed_batches(
-    model: GIN,
+    model: nn.Module,
     batches: Sequence[Batch],
 ) -> torch.Tensor:
     """Return all graph-level 16-D RPC representations."""
@@ -644,7 +644,7 @@ def summarize_results(
     }
 
 
-def evaluate_gin_brec(
+def evaluate_model_brec(
     config: Mapping[str, Any],
     *,
     seed: int = 42,
@@ -652,7 +652,7 @@ def evaluate_gin_brec(
     progress: Callable[[str], None] = print,
     max_pairs: int | None = None,
 ) -> dict[str, Any]:
-    """Run one seeded GIN/BREC experiment.
+    """Run one seeded graph-model/BREC experiment.
 
     Parameters
     ----------
@@ -763,7 +763,7 @@ def evaluate_gin_brec(
 
                 in_dim = int(batches[0].x.shape[1])
 
-                model = GIN.from_config(
+                model = build_model(
                     config,
                     in_dim=in_dim,
                     out_dim=OUTPUT_DIM,
@@ -777,7 +777,7 @@ def evaluate_gin_brec(
                     parameters = current_parameters
                 elif parameters != current_parameters:
                     raise ValueError(
-                        "GIN parameter count changed "
+                        "Model parameter count changed "
                         "between BREC pairs"
                     )
 
@@ -964,7 +964,7 @@ def evaluate_gin_brec(
             "use repository config, not reference defaults."
         ),
         (
-            "Existing final-layer GIN encoder plus "
+            f"Configured {config['model']['name']} encoder plus "
             "linear 16-D RPC head; node features are "
             f"supplied by the configured '{encoder.name}' encoding."
         ),
@@ -1010,7 +1010,7 @@ def evaluate_gin_brec(
         "seed": seed,
         "task": config["task"]["name"],
         "dataset": config["task"]["dataset"],
-        "model": "gin",
+        "model": config["model"]["name"],
         "encoding": encoder.name,
         "hidden_dim": (
             config["model"]["hidden_dim"]
@@ -1142,3 +1142,27 @@ def evaluate_gin_brec(
             else None
         ),
     }
+
+
+def evaluate_gin_brec(
+    config: Mapping[str, Any], *, seed: int = 42,
+    embeddings_path: Path | None = None, progress: Callable[[str], None] = print,
+    max_pairs: int | None = None,
+) -> dict[str, Any]:
+    """Backward-compatible GIN entry point for the shared BREC protocol."""
+    if config["model"]["name"] != "gin":
+        raise ValueError("Expected model.name=gin")
+    return evaluate_model_brec(config, seed=seed, embeddings_path=embeddings_path,
+                               progress=progress, max_pairs=max_pairs)
+
+
+def evaluate_graphgps_brec(
+    config: Mapping[str, Any], *, seed: int = 42,
+    embeddings_path: Path | None = None, progress: Callable[[str], None] = print,
+    max_pairs: int | None = None,
+) -> dict[str, Any]:
+    """Run GraphGPS through the shared BREC protocol."""
+    if config["model"]["name"] != "graphgps":
+        raise ValueError("Expected model.name=graphgps")
+    return evaluate_model_brec(config, seed=seed, embeddings_path=embeddings_path,
+                               progress=progress, max_pairs=max_pairs)

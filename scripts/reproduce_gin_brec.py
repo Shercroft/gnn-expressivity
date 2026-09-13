@@ -10,10 +10,16 @@ from gnn_expressivity.training.config import load_yaml, merge_configs
 from gnn_expressivity.training.logging import build_run_id, save_run
 
 
-def main() -> None:
+def main(*, model_name: str = "gin", evaluator=None) -> None:
+    """Run the shared CLI; defaults retain the original GIN command."""
+    if evaluator is None:
+        evaluator = evaluate_gin_brec
     root = Path(__file__).resolve().parents[1]
 
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=f"Run one seeded {model_name}/BREC experiment.")
+    if model_name != "gin":
+        parser.add_argument("--encoding", default="none",
+                            choices=["none", "degree", "random", "uid", "rwse", "lappe"])
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42).")
 
     parser.add_argument(
@@ -54,9 +60,9 @@ def main() -> None:
         *(
             load_yaml(root / "configs" / path)
             for path in (
-                "models/gin.yaml",
+                f"models/{model_name}.yaml",
                 "tasks/brec.yaml",
-                "encodings/none.yaml",
+                f"encodings/{getattr(args, 'encoding', 'none')}.yaml",
             )
         )
     )
@@ -85,7 +91,7 @@ def main() -> None:
                 f"Embeddings already exist: {embeddings_path}"
             )
 
-    result = evaluate_gin_brec(
+    result = evaluator(
         config,
         seed=args.seed,
         embeddings_path=embeddings_path,

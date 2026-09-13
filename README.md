@@ -207,6 +207,36 @@ interpretation of degeneracies before paper claims. Dense CPU float64
 eigendecomposition costs roughly `O(n^3)` time and `O(n^2)` matrix storage,
 plus `O(nk)` output storage; appended features match baseline dtype/device.
 
+## GraphGPS baseline (WP2.5)
+
+`graphgps` uses PyG `torch_geometric.nn.GPSConv`: an input linear projection
+followed by four hybrid layers (128 channels, four attention heads). Each local
+branch is a `GINConv` with a 128-ReLU-128 MLP and trainable epsilon. The global
+branch uses multi-head self-attention within each graph, with padding masked.
+Node-wise LayerNorm avoids cross-graph normalization statistics. GPSConv applies
+separate local/global residuals and norms, sums the branches, then applies its
+128-256-ReLU-128 feed-forward residual and final norm. Dropout is 0.1 in branches,
+attention, and the FFN. Sum pooling is default; mean/max are also supported.
+An optional linear head provides task outputs; `encode()` returns pooled states.
+
+All six encodings remain external. The shared BREC evaluator derives input
+width from encoded batches and retains the same RPC protocol and resource schema
+for GIN and GraphGPS. GraphGPS requires finite floating-point `x`; apply the
+`none` encoder for featureless graphs. PyG batches use sorted node membership.
+
+```sh
+uv run python scripts/reproduce_graphgps_brec.py --seed 0 --max-pairs 2 --encoding none --results-dir results/runs/wp2_5_smoke_none
+uv run python scripts/reproduce_graphgps_brec.py --seed 0 --max-pairs 2 --encoding rwse --results-dir results/runs/wp2_5_smoke_rwse
+uv run python scripts/reproduce_graphgps_brec.py --seed 0 --max-pairs 2 --encoding lappe --results-dir results/runs/wp2_5_smoke_lappe
+```
+
+The command defaults to one CPU thread and protects existing JSON/embedding
+files. `evaluate_graphgps_brec` and `evaluate_gin_brec` share
+`evaluate_model_brec`; the original GIN CLI defaults remain intact. Global
+attention scales approximately quadratically in nodes per graph, making this
+baseline more expensive than GIN. Two-pair smokes are development checks, not
+benchmark results or a reproduction of every GraphGPS paper component.
+
 ## GIN on BREC development experiment
 
 Run `uv run python scripts/reproduce_gin_brec.py` after downloading BREC.
