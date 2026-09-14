@@ -23,12 +23,12 @@ ENVIRONMENT = ["os", "python_version", "torch_version", "torch_geometric_version
                "device", "accelerator", "torch_num_threads"]
 
 
-def validate_full_run(run: Mapping[str, Any], seed: int) -> None:
+def validate_full_run(run: Mapping[str, Any], seed: int, encoding: str = "none") -> None:
     """Reject incomplete/wrong-identity records and inconsistent summary counts."""
     if (run.get("seed") != seed or type(run.get("seed")) is not int or seed not in SEEDS
-            or run.get("run_id") != f"brec_gin_none_seed{seed}"):
+            or run.get("run_id") != f"brec_gin_{encoding}_seed{seed}"):
         raise ValueError(f"Unexpected run identity for seed {seed}")
-    for key, expected in {"task": "brec", "dataset": "BREC", "model": "gin", "encoding": "none",
+    for key, expected in {"task": "brec", "dataset": "BREC", "model": "gin", "encoding": encoding,
                           "evaluated_pairs": 400, "full_benchmark_pairs": 400,
                           "development_subset": False, "full_benchmark_completed": True}.items():
         if run.get(key) != expected or type(run.get(key)) is not type(expected):
@@ -47,7 +47,7 @@ def validate_full_run(run: Mapping[str, Any], seed: int) -> None:
     }.items():
         if any(field not in config[section] for field in fields):
             raise ValueError(f"Incomplete {section} config")
-    if (config["model"]["name"] != "gin" or config["encoding"]["name"] != "none"
+    if (config["model"]["name"] != "gin" or config["encoding"]["name"] != encoding
             or config["model"]["hidden_dim"] != run["hidden_dim"]
             or config["model"]["num_layers"] != run["num_layers"]):
         raise ValueError("Top-level model/encoding metadata disagrees with config")

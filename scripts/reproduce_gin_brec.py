@@ -17,9 +17,8 @@ def main(*, model_name: str = "gin", evaluator=None) -> None:
     root = Path(__file__).resolve().parents[1]
 
     parser = argparse.ArgumentParser(description=f"Run one seeded {model_name}/BREC experiment.")
-    if model_name != "gin":
-        parser.add_argument("--encoding", default="none",
-                            choices=["none", "degree", "random", "uid", "rwse", "lappe"])
+    parser.add_argument("--encoding", default="none",
+                        choices=["none", "degree", "random", "uid", "rwse", "lappe"])
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42).")
 
     parser.add_argument(
