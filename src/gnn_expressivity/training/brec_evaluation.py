@@ -18,6 +18,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -486,6 +487,7 @@ def embed_batches(
 def summarize_results(
     records: Sequence[Mapping[str, Any]],
     expected_pairs: int,
+    *, start_pair: int = 0,
 ) -> dict[str, Any]:
     """Summarize completed BREC pair evaluations.
 
@@ -496,9 +498,9 @@ def summarize_results(
     For a development subset, such as ``--max-pairs 20``, it is the
     number of pairs intentionally evaluated.
 
-    The evaluated pair IDs must form the contiguous prefix
+    The evaluated pair IDs must form the contiguous range
 
-        0, 1, ..., expected_pairs - 1
+        start_pair, ..., start_pair + expected_pairs - 1
 
     with no missing or duplicate entries.
     """
@@ -509,7 +511,7 @@ def summarize_results(
             record["pair_id"]
             for record in records
         }
-        != set(range(expected_pairs))
+        != set(range(start_pair, start_pair + expected_pairs))
     ):
         raise ValueError(
             "Missing, duplicate, or misaligned evaluated pair IDs"
@@ -651,6 +653,11 @@ def evaluate_model_brec(
     embeddings_path: Path | None = None,
     progress: Callable[[str], None] = print,
     max_pairs: int | None = None,
+    start_pair: int = 0,
+    end_pair: int | None = None,
+    checkpoint_path: Path | None = None,
+    resume: bool = False,
+    diagnostics: bool = False,
 ) -> dict[str, Any]:
     """Run one seeded graph-model/BREC experiment.
 
@@ -677,6 +684,15 @@ def evaluate_model_brec(
         A smaller value is intended only for development/testing.
         Partial runs are explicitly marked and do not receive a
         valid full-benchmark primary metric.
+
+    start_pair, end_pair:
+        Zero-based inclusive start and exclusive stop. A standalone range
+        starts the RNG stream at seed, not at the full-run prefix's RNG offset.
+    checkpoint_path, resume:
+        Optional atomic partial snapshot after each completed pair. Resume
+        validates experiment identity and restores the sequential RNG state.
+    diagnostics:
+        Report pair sizes, phase boundaries and completion timings.
     """
 
     set_seed(seed)
@@ -695,6 +711,8 @@ def evaluate_model_brec(
     saved_controls: list[np.ndarray] = []
 
     parameters: int | None = None
+    prior_elapsed = 0.0
+    session_start = perf_counter()
 
     with Timer(device) as total_timer:
 
@@ -731,15 +749,57 @@ def evaluate_model_brec(
 
             pair_count = max_pairs
 
-        development_subset = (
-            pair_count < full_pair_count
-        )
+        if max_pairs is not None and (start_pair != 0 or end_pair is not None):
+            raise ValueError('max_pairs cannot be combined with a pair range')
+        stop = pair_count if end_pair is None else end_pair
+        if (type(start_pair) is not int or type(stop) is not int or
+                not 0 <= start_pair < stop <= full_pair_count):
+            raise ValueError('Pair range must satisfy 0 <= start_pair < end_pair <= benchmark size')
+        pair_ids = list(range(start_pair, stop))
+        pair_count = len(pair_ids)
+        development_subset = pair_ids != list(range(full_pair_count))
+        if checkpoint_path is not None:
+            from .pair_checkpoint import load_checkpoint, restore_rng, save_checkpoint, source_digest
+
+            identity = {'config': dict(config), 'seed': seed, 'source_sha256': dataset.sha256,
+                        'pair_ids': pair_ids, 'save_embeddings': embeddings_path is not None,
+                        'implementation_sha256': source_digest(),
+                        'environment': {k: str(v) for k, v in system_metadata(device).items()},
+                        'threads': torch.get_num_threads(),
+                        'protocol': [PROTOCOL_URL, THRESHOLD, ATOL, RTOL, OUTPUT_DIM,
+                                     NUM_RELABELINGS, LOSS_THRESHOLD]}
+            if checkpoint_path.exists():
+                if not resume:
+                    raise FileExistsError(f'Partial checkpoint exists; use resume: {checkpoint_path}')
+                state = load_checkpoint(checkpoint_path, identity)
+                records = state['records']
+                if records:
+                    summarize_results(records, len(records), start_pair=start_pair)
+                saved_test = [a.numpy() for a in state['test']]
+                saved_controls = [a.numpy() for a in state['controls']]
+                parameters = state['parameters']
+                preprocessing, training, inference, prior_elapsed = state['times']
+                restore_rng(state['rng'])
+                progress(f'Resuming {len(records)}/{pair_count} completed pairs from {checkpoint_path}')
+            else:
+                save_checkpoint(checkpoint_path, identity, records, saved_test, saved_controls,
+                                parameters, [preprocessing, training, inference, 0.0])
 
         # ---------------------------------------------------------
         # Pair-wise BREC evaluation
         # ---------------------------------------------------------
 
-        for pair_id in range(pair_count):
+        for pair_id in pair_ids[len(records):]:
+            pair_started = perf_counter()
+            diagnostic = {}
+            if diagnostics:
+                representative = dataset[pair_id]
+                diagnostic = {'sequential_pair_index': pair_id + 1,
+                              'num_nodes': [g.num_nodes for g in representative.graphs],
+                              'num_edges': [g.num_edges for g in representative.graphs]}
+                progress(f"START pair {pair_id + 1}/{full_pair_count}; pair_id={pair_id}; "
+                         f"category={representative.category}; nodes={diagnostic['num_nodes']}; "
+                         f"edges={diagnostic['num_edges']}; phase=preprocessing")
 
             # -----------------------------------------------------
             # Pair preparation + fresh model initialization
@@ -782,6 +842,8 @@ def evaluate_model_brec(
                     )
 
             preprocessing += timer.elapsed_sec
+            if diagnostics:
+                progress(f'pair_id={pair_id}; phase=training; preprocessing_sec={timer.elapsed_sec:.3f}')
 
             # -----------------------------------------------------
             # Training
@@ -795,6 +857,8 @@ def evaluate_model_brec(
                 )
 
             training += timer.elapsed_sec
+            if diagnostics:
+                progress(f'pair_id={pair_id}; phase=inference; epochs={epochs}; training_sec={timer.elapsed_sec:.3f}')
 
             # -----------------------------------------------------
             # Inference
@@ -812,6 +876,8 @@ def evaluate_model_brec(
                 )
 
             inference += timer.elapsed_sec
+            if diagnostics:
+                progress(f'pair_id={pair_id}; phase=rpc; inference_sec={timer.elapsed_sec:.3f}')
 
             # -----------------------------------------------------
             # Official-style RPC statistics
@@ -844,6 +910,8 @@ def evaluate_model_brec(
                         2 * NUM_RELABELINGS
                     ),
                     **decision,
+                    **diagnostic,
+                    **({'pair_elapsed_sec': perf_counter() - pair_started} if diagnostics else {}),
                 }
             )
 
@@ -864,7 +932,16 @@ def evaluate_model_brec(
             # Progress output
             # -----------------------------------------------------
 
-            completed = pair_id + 1
+            if checkpoint_path is not None:
+                save_checkpoint(checkpoint_path, identity, records, saved_test, saved_controls,
+                                parameters, [preprocessing, training, inference,
+                                             prior_elapsed + perf_counter() - session_start])
+            if diagnostics:
+                progress(f"DONE pair {pair_id + 1}/{full_pair_count}; pair_id={pair_id}; "
+                         f"category={pair.category}; nodes={diagnostic['num_nodes']}; "
+                         f"edges={diagnostic['num_edges']}; elapsed_sec={perf_counter() - pair_started:.3f}; "
+                         f"epochs={epochs}; distinguished={decision['distinguished']}; reliable={decision['reliable']}")
+            completed = len(records)
 
             if (
                 completed % 10 == 0
@@ -900,6 +977,7 @@ def evaluate_model_brec(
     summary = summarize_results(
         records,
         pair_count,
+        start_pair=start_pair,
     )
 
     reliability_valid = (
@@ -908,7 +986,7 @@ def evaluate_model_brec(
     )
 
     full_benchmark_completed = (
-        pair_count == full_pair_count
+        not development_subset
     )
 
     # A subset may be perfectly reliable, but it is not a completed
@@ -929,12 +1007,10 @@ def evaluate_model_brec(
             exist_ok=True,
         )
 
-        with embeddings_path.open("xb") as file:
+        def write_embeddings(file):
             np.savez_compressed(
                 file,
-                pair_ids=np.arange(
-                    pair_count
-                ),
+                pair_ids=np.array(pair_ids),
                 categories=np.array(
                     [
                         record["category"]
@@ -948,6 +1024,12 @@ def evaluate_model_brec(
                     saved_controls
                 ),
             )
+        if checkpoint_path is not None:
+            from .pair_checkpoint import atomic_write
+            atomic_write(embeddings_path, write_embeddings)
+        else:
+            with embeddings_path.open('xb') as file:
+                write_embeddings(file)
 
     if parameters is None:
         raise RuntimeError(
@@ -1030,6 +1112,9 @@ def evaluate_model_brec(
         "development_subset": (
             development_subset
         ),
+        "pair_range": [start_pair, stop],
+        "rng_selection_note": ('Standalone range starts from the run seed, not the full-run RNG offset.'
+                               if start_pair else 'Sequential run RNG; checkpoint resumes restore its state.'),
         "full_benchmark_completed": (
             full_benchmark_completed
         ),
@@ -1078,7 +1163,7 @@ def evaluate_model_brec(
         "training_time_sec": training,
         "inference_time_sec": inference,
         "evaluation_time_sec": (
-            total_timer.elapsed_sec
+            prior_elapsed + total_timer.elapsed_sec
         ),
         "process_memory_mb": (
             process_memory_mb()
@@ -1160,9 +1245,13 @@ def evaluate_graphgps_brec(
     config: Mapping[str, Any], *, seed: int = 42,
     embeddings_path: Path | None = None, progress: Callable[[str], None] = print,
     max_pairs: int | None = None,
+    start_pair: int = 0, end_pair: int | None = None,
+    checkpoint_path: Path | None = None, resume: bool = False, diagnostics: bool = False,
 ) -> dict[str, Any]:
     """Run GraphGPS through the shared BREC protocol."""
     if config["model"]["name"] != "graphgps":
         raise ValueError("Expected model.name=graphgps")
     return evaluate_model_brec(config, seed=seed, embeddings_path=embeddings_path,
-                               progress=progress, max_pairs=max_pairs)
+                               progress=progress, max_pairs=max_pairs, start_pair=start_pair,
+                               end_pair=end_pair, checkpoint_path=checkpoint_path,
+                               resume=resume, diagnostics=diagnostics)
